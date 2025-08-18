@@ -1,16 +1,13 @@
 # app.py — Column Grouping Merger
 # CSV/XLSX/XLS • optional "treat sheets as files"
 # Groups = map header variants → one standardized output column
-# Picker shows ONLY unique field names. It lists only headers that still add coverage.
-# When you select a field, it disappears; and so do other fields that no longer add coverage.
-# All expanders start collapsed. Uses st.rerun().
 
 import os, glob, json, time, traceback, platform, subprocess, re
 from collections import Counter, defaultdict
 from datetime import datetime
-
 import pandas as pd
 import streamlit as st
+from rapidfuzz import process, fuzz  # Make sure rapidfuzz is in requirements.txt
 
 # ---------- Page & dirs ----------
 st.set_page_config(page_title="Column Grouping Merger", layout="wide")
@@ -223,26 +220,73 @@ for k, v in defaults.items():
 # ---------- Top bar ----------
 st.title("Column Grouping Merger")
 
-c1,c2,c3,c4,c5,c6,c7 = st.columns([3,0.6,3,0.6,3,1.8,1.2])
+# Only keep the refresh button here
+c1, c2 = st.columns([1, 1])
 with c1:
-    st.session_state.input_dir = st.text_input("Input folder", value=st.session_state.input_dir, placeholder=DEFAULT_INPUT_DIR)
-with c2:
-    if st.button("📂"):
-        p = open_folder_dialog("Select the INPUT folder")
-        if p: st.session_state.input_dir = p
-with c3:
-    st.session_state.output_dir = st.text_input("Output folder", value=st.session_state.output_dir, placeholder=DEFAULT_OUTPUT_DIR)
-with c4:
-    if st.button("📁"):
-        p = open_folder_dialog("Select the OUTPUT folder")
-        if p: st.session_state.output_dir = p
-with c5:
-    st.session_state.output_name = st.text_input("Output file name", value=st.session_state.output_name)
-with c6:
-    st.session_state.treat_sheets_as_files = st.toggle("Treat Excel sheets as files", value=st.session_state.treat_sheets_as_files)
-with c7:
     refresh = st.button("🔄 Rescan")
-st.toggle("Scan subfolders (recursive)", key="recursive", value=st.session_state.recursive)
+
+# ---------- Utilities ----------
+with st.expander("Utilities", expanded=False):
+    c1, c2, c3, c4 = st.columns([3, 3, 2, 2])
+    with c1:
+        st.session_state.input_dir = st.text_input("Input folder", value=st.session_state.input_dir, placeholder=DEFAULT_INPUT_DIR, key="util_input_dir")
+    with c2:
+        st.session_state.output_dir = st.text_input("Output folder", value=st.session_state.output_dir, placeholder=DEFAULT_OUTPUT_DIR, key="util_output_dir")
+    with c3:
+        st.session_state.output_name = st.text_input("Output file name", value=st.session_state.output_name, key="util_output_name")
+    with c4:
+        st.session_state.treat_sheets_as_files = st.toggle("Treat Excel sheets as files", value=st.session_state.treat_sheets_as_files, key="util_treat_sheets_as_files")
+    c5, c6 = st.columns([1, 1])
+    with c5:
+        if st.button("📂 Pick Input Folder", key="util_pick_input"):
+            p = open_folder_dialog("Select the INPUT folder")
+            if p: st.session_state.input_dir = p
+    with c6:
+        if st.button("📁 Pick Output Folder", key="util_pick_output"):
+            p = open_folder_dialog("Select the OUTPUT folder")
+            if p: st.session_state.output_dir = p
+    if st.button("Generate 5 Dummy Excel Files in Input Folder"):
+        try:
+            generate_dummy_excels(st.session_state.input_dir)
+            st.success("Dummy Excel files created in input folder!")
+        except Exception as e:
+            st.error(f"Failed to generate dummy files: {e}")
+
+# ---------- Dummy Data Generator ----------
+def generate_dummy_excels(target_folder):
+    import numpy as np
+    import pandas as pd
+    os.makedirs(target_folder, exist_ok=True)
+    # Define some column name variants
+    col_sets = [
+        ["Name", "Age", "Score", "Email", "JoinDate"],
+        ["Full Name", "Years", "Score", "Email Address", "Join Date"],
+        ["Name", "Age", "Result", "Email", "Joined"],
+        ["Full Name", "Age", "Score", "Contact", "JoinDate"],
+        ["Name", "Years", "Score", "Email", "Join Date"]
+    ]
+    for i, cols in enumerate(col_sets):
+        data = {}
+        for col in cols:
+            if "Name" in col:
+                data[col] = [f"User {j+1}" for j in range(20)]
+            elif "Full Name" in col:
+                data[col] = [f"Person {j+1}" for j in range(20)]
+            elif "Age" in col or "Years" in col:
+                data[col] = np.random.randint(18, 60, 20)
+            elif "Score" in col or "Result" in col:
+                data[col] = np.random.randint(50, 100, 20)
+            elif "Email" in col:
+                data[col] = [f"user{j+1}@example.com" for j in range(20)]
+            elif "Contact" in col:
+                data[col] = [f"contact{j+1}@example.com" for j in range(20)]
+            elif "Join" in col:
+                data[col] = pd.date_range("2024-01-01", periods=20).strftime("%Y-%m-%d").tolist()
+            else:
+                data[col] = [f"Data{j+1}" for j in range(20)]
+        df = pd.DataFrame(data)
+        out_path = os.path.join(target_folder, f"dummy_{i+1}.xlsx")
+        df.to_excel(out_path, index=False)
 
 # ---------- Scan ----------
 def compute_scan_signature(path: str, recursive: bool, sheets_as_files: bool):
@@ -306,7 +350,7 @@ if refresh or (sig_now is not None and sig_now != st.session_state.last_scan_sig
         st.error(f"Scan failed: {e}"); add_log(f"[ERROR] Scan failed: {e}\n{traceback.format_exc()}")
 
 # ---------- Units view ----------
-with st.expander("Units (files or file::sheet) & Columns", expanded=False):
+with st.expander("File and Sheet Selection and Preview", expanded=False):
     left, right = st.columns([1.2, 2.8], gap="large")
     with left:
         if st.session_state.units:
@@ -332,7 +376,7 @@ with st.expander("Units (files or file::sheet) & Columns", expanded=False):
             st.dataframe(pd.DataFrame({"header": uniq}), use_container_width=True)
 
 # ---------- Coverage ----------
-with st.expander("Header Coverage (across included units)", expanded=False):
+with st.expander("Header Preview (across selected files)", expanded=False):
     cov = st.session_state.coverage_df
     if not cov.empty:
         q = st.text_input("Filter headers (contains)", "")
@@ -342,121 +386,110 @@ with st.expander("Header Coverage (across included units)", expanded=False):
     else:
         st.caption("Coverage will appear after scanning and including units.")
 
-# ---------- Mapping Builder (unique header names only; show only those that add coverage) ----------
-def _header_to_units_map(headers_by_unit: dict[str, list[str]], included_units: set[str]) -> dict[str, set[str]]:
-    h2u = defaultdict(set)
-    for uk, hdrs in headers_by_unit.items():
-        if uk not in included_units: continue
-        for h in hdrs: h2u[h].add(uk)
-    return h2u
+# ---------- Mapping Builder (one output column/group at a time) ----------
+def get_unit_label(uk):
+    meta = st.session_state.unit_meta[uk]
+    return unit_label(meta["file"], meta["sheet"], st.session_state.input_dir)
 
-def _units_covered_by_current_group() -> set[str]:
-    h2u = _header_to_units_map(st.session_state.headers_by_unit, st.session_state.included_units)
-    covered = set()
-    for h in st.session_state.current_group_headers:
-        covered |= h2u.get(h, set())
-    return covered
+def get_headers_for_unit(uk):
+    return st.session_state.headers_unique_by_unit.get(uk, [])
 
-def _compute_header_options_unique_only():
-    """
-    Return a list of plain header strings that STILL ADD COVERAGE:
-    i.e., headers that appear in at least one unit not yet covered by the current group.
-    """
-    if not st.session_state.included_units:
-        return []
-    h2u = _header_to_units_map(st.session_state.headers_by_unit, st.session_state.included_units)
-    covered_units = _units_covered_by_current_group()
-    # unique header names across included units
-    unique_headers = sorted(h2u.keys(), key=str.lower)
-    options = []
-    for h in unique_headers:
-        if h in st.session_state.current_group_headers:
-            continue
-        new_units = h2u[h] - covered_units
-        if new_units:
-            options.append(h)
-    return options
+def fuzzy_auto_match(pattern, headers):
+    if not pattern or not headers:
+        return None
+    match, score, _ = process.extractOne(pattern, headers, scorer=fuzz.token_sort_ratio)
+    return match if score > 60 else None  # Adjust threshold as needed
 
-with st.expander("Mapping Builder (header variants → standardized output)", expanded=False):
-    options = _compute_header_options_unique_only()
-    chosen_headers = st.multiselect(
-        "Pick header(s) to add (list shows only fields that still add coverage):",
-        options=options,
-        key="headers_selected_for_group"
+with st.expander("Mapping Builder (one output column/group at a time)", expanded=True):
+    # State for new group
+    if "new_group_name" not in st.session_state:
+        st.session_state.new_group_name = ""
+    if "new_group_pattern" not in st.session_state:
+        st.session_state.new_group_pattern = ""
+    if "new_group_selections" not in st.session_state or not isinstance(st.session_state.new_group_selections, dict):
+        st.session_state.new_group_selections = {}
+
+    # Step 1 & 2: Name and Auto-match on the same line (no headers)
+    col1, col2, col3 = st.columns([2, 2, 1])
+    with col1:
+        st.session_state.new_group_name = st.text_input("Output column name (group)", value=st.session_state.new_group_name, key="new_group_name_input")
+    with col2:
+        st.session_state.new_group_pattern = st.text_input("Auto-match pattern (optional)", value=st.session_state.new_group_pattern, key="new_group_pattern_input")
+    with col3:
+        if st.button("Apply Auto-Match"):
+            for uk in st.session_state.included_units:
+                headers = get_headers_for_unit(uk)
+                match = fuzzy_auto_match(st.session_state.new_group_pattern, headers)
+                if match:
+                    st.session_state.new_group_selections[uk] = match
+                else:
+                    st.session_state.new_group_selections[uk] = ""
+            st.success("Auto-match applied.")
+
+    # Compact table layout for file/column selection with headers
+    import streamlit as st
+    from uuid import uuid4
+
+    coverage_count = 0
+    total_units = len(st.session_state.included_units)
+
+    # Table headers
+    st.markdown(
+        """
+        <style>
+        .compact-table td, .compact-table th {
+            padding: 0.2em 0.5em !important;
+            font-size: 0.95em !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
+    table_cols = st.columns([2, 2])
+    with table_cols[0]:
+        st.markdown("**File**")
+    with table_cols[1]:
+        st.markdown("**Selected Column**")
 
-    def _add_headers_expanding_coverage(headers_to_add: list[str]):
-        """Add only those headers that increase unit coverage; ignore duplicates/no-op."""
-        if not headers_to_add: return []
-        h2u = _header_to_units_map(st.session_state.headers_by_unit, st.session_state.included_units)
-        covered = _units_covered_by_current_group()
-        actually_added = []
-        for h in sorted(set(headers_to_add), key=str.lower):
-            if h in st.session_state.current_group_headers:
-                continue
-            new_units = h2u.get(h, set()) - covered
-            if new_units:
-                st.session_state.current_group_headers.append(h)
-                covered |= new_units
-                actually_added.append(h)
-        return actually_added
+    for uk in sorted(st.session_state.included_units):
+        label = get_unit_label(uk)
+        headers = get_headers_for_unit(uk)
+        current = st.session_state.new_group_selections.get(uk, "")
+        row_cols = st.columns([2, 2])
+        with row_cols[0]:
+            st.markdown(label)
+        with row_cols[1]:
+            sel = st.selectbox(
+                "",
+                options=[""] + headers,
+                index=([""] + headers).index(current) if current in headers else 0,
+                key=f"new_group_select_{uk}"
+            )git config --global user.name "Your Name"
+            st.session_state.new_group_selections[uk] = sel
+            if sel:
+                coverage_count += 1
 
-    if st.button("➕ Add selected"):
-        try:
-            added = _add_headers_expanding_coverage(chosen_headers)
-            st.session_state["headers_selected_for_group"] = []  # clear current selection
-            if added:
-                if not st.session_state.current_group_name and st.session_state.current_group_headers:
-                    st.session_state.current_group_name = st.session_state.current_group_headers[0]
-                st.success(f"Added: {', '.join(added)}")
-            else:
-                st.info("Nothing new to add (those choices do not expand coverage).")
-        except Exception as e:
-            st.error(f"Add failed: {e}")
-            add_log(f"[ERROR] Add failed: {e}\n{traceback.format_exc()}")
-        st.rerun()
+    st.markdown(f"**Coverage:** {coverage_count} of {total_units} files/units have a column selected for this group.")
 
-    # Live coverage preview (units)
-    if st.session_state.included_units:
-        h2u_now = _header_to_units_map(st.session_state.headers_by_unit, st.session_state.included_units)
-        covered_units_now = set()
-        for h in st.session_state.current_group_headers:
-            covered_units_now |= h2u_now.get(h, set())
-        st.caption(f"Units covered by current group: **{len(covered_units_now)}** / {len(st.session_state.included_units)}")
-
-    # Name & save / clear
-    st.session_state.current_group_name = st.text_input(
-        "Output column name (auto-suggested; editable)",
-        value=st.session_state.current_group_name,
-        key="current_group_name_input"
-    )
-
-    if st.session_state.current_group_headers:
-        st.dataframe(pd.DataFrame({"headers_in_group": st.session_state.current_group_headers}), use_container_width=True)
-        cxa, cxb = st.columns([1,1])
-        with cxa:
-            if st.button("🗑️ Clear current group"):
-                st.session_state.current_group_headers = []
-                st.session_state.current_group_name = ""
-                st.rerun()
-        with cxb:
-            can_save = bool(st.session_state.current_group_headers) and bool(st.session_state.current_group_name.strip())
-            if st.button("💾 Save group") and can_save:
-                try:
-                    st.session_state.header_groups.append({
-                        "output_name": st.session_state.current_group_name.strip(),
-                        "headers": list(st.session_state.current_group_headers)
-                    })
-                    # Reset builder for next group
-                    st.session_state.current_group_headers = []
-                    st.session_state.current_group_name = ""
-                    st.success("Saved header group.")
-                except Exception as e:
-                    st.error(f"Save failed: {e}")
-                    add_log(f"[ERROR] Save failed: {e}\n{traceback.format_exc()}")
-                st.rerun()
-    else:
-        st.caption("The list shows only fields that still add coverage. Once you add one, it vanishes automatically.")
+    # Save group
+    if st.button("💾 Save group"):
+        if not st.session_state.new_group_name.strip():
+            st.error("Please enter a group/output column name.")
+        elif coverage_count == 0:
+            st.error("Select at least one column to map for this group.")
+        else:
+            # Build group: output_name, headers (list of selected headers)
+            selected_headers = [v for v in st.session_state.new_group_selections.values() if v]
+            st.session_state.header_groups.append({
+                "output_name": st.session_state.new_group_name.strip(),
+                "headers": list(set(selected_headers))
+            })
+            # Reset for next group
+            st.session_state.new_group_name = ""
+            st.session_state.new_group_pattern = ""
+            st.session_state.new_group_selections = {}
+            st.success("Saved header group.")
+            st.rerun()
 
 # ---------- Saved groups (expand for full mapping table) ----------
 with st.expander("Saved Header Groups", expanded=False):
