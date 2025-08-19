@@ -409,13 +409,22 @@ with st.expander("Mapping Builder (one output column/group at a time)", expanded
     if "new_group_selections" not in st.session_state or not isinstance(st.session_state.new_group_selections, dict):
         st.session_state.new_group_selections = {}
 
-    # Step 1 & 2: Name and Auto-match on the same line (no headers)
+    # Name and Auto-match fields
     col1, col2, col3 = st.columns([2, 2, 1])
     with col1:
-        st.session_state.new_group_name = st.text_input("Output column name (group)", value=st.session_state.new_group_name, key="new_group_name_input")
+        st.session_state.new_group_name = st.text_input(
+            "Output column name (group)",
+            value=st.session_state.new_group_name,
+            key="new_group_name_input"
+        )
     with col2:
-        st.session_state.new_group_pattern = st.text_input("Auto-match pattern (optional)", value=st.session_state.new_group_pattern, key="new_group_pattern_input")
+        st.session_state.new_group_pattern = st.text_input(
+            "Auto-match pattern (optional)",
+            value=st.session_state.new_group_pattern,
+            key="new_group_pattern_input"
+        )
     with col3:
+        st.markdown("<div style='height:1.7em'></div>", unsafe_allow_html=True)  # vertical align
         if st.button("Apply Auto-Match"):
             for uk in st.session_state.included_units:
                 headers = get_headers_for_unit(uk)
@@ -425,66 +434,80 @@ with st.expander("Mapping Builder (one output column/group at a time)", expanded
                 else:
                     st.session_state.new_group_selections[uk] = ""
             st.success("Auto-match applied.")
+            st.rerun()
 
-    # Compact table layout for file/column selection with headers
-    import streamlit as st
-    from uuid import uuid4
-
-    coverage_count = 0
+    # --- Interactive Table with Dropdowns ---
+    
+    # Calculate coverage based on current selections
+    coverage_count = sum(1 for uk in st.session_state.included_units if st.session_state.new_group_selections.get(uk))
     total_units = len(st.session_state.included_units)
+    percent = int((coverage_count / total_units) * 100) if total_units else 0
 
-    # Table headers
+    # Coverage bar and count
+    st.markdown(
+        f"<div style='margin-top:1em; margin-bottom:0.2em;font-size:0.95em;'>"
+        f"<b>Coverage:</b> {coverage_count} of {total_units} files/units selected "
+        f"({percent}%)"
+        "</div>",
+        unsafe_allow_html=True
+    )
+    st.progress(percent / 100)
+
+    # Table Headers
     st.markdown(
         """
         <style>
-        .compact-table td, .compact-table th {
-            padding: 0.2em 0.5em !important;
-            font-size: 0.95em !important;
+        .st-emotion-cache-1y4p8pa { /* Targets the container of st.columns */
+            gap: 0.5rem; /* Reduces gap between columns */
+        }
+        .header-style {
+            font-weight: 600;
+            padding: 0.25rem 0;
+            border-bottom: 1px solid #444;
+        }
+        .row-style {
+            padding: 0.1rem 0;
+            vertical-align: middle;
         }
         </style>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
-    table_cols = st.columns([2, 2])
-    with table_cols[0]:
-        st.markdown("**File**")
-    with table_cols[1]:
-        st.markdown("**Selected Column**")
+    header_cols = st.columns([2, 2])
+    header_cols[0].markdown('<div class="header-style">File</div>', unsafe_allow_html=True)
+    header_cols[1].markdown('<div class="header-style">Selected Column</div>', unsafe_allow_html=True)
 
+    # Table Rows with Interactive Dropdowns
     for uk in sorted(st.session_state.included_units):
+        row_cols = st.columns([2, 2])
         label = get_unit_label(uk)
         headers = get_headers_for_unit(uk)
         current = st.session_state.new_group_selections.get(uk, "")
-        row_cols = st.columns([2, 2])
+        
         with row_cols[0]:
-            st.markdown(label)
+            st.markdown(f'<div class="row-style">{label}</div>', unsafe_allow_html=True)
+        
         with row_cols[1]:
-            sel = st.selectbox(
-                "",
+            st.selectbox(
+                label=f"selectbox_for_{uk}", # Hidden label for unique widget ID
+                label_visibility="collapsed",
                 options=[""] + headers,
                 index=([""] + headers).index(current) if current in headers else 0,
                 key=f"new_group_select_{uk}"
-            )git config --global user.name "Your Name"
-            st.session_state.new_group_selections[uk] = sel
-            if sel:
-                coverage_count += 1
+            )
 
-    st.markdown(f"**Coverage:** {coverage_count} of {total_units} files/units have a column selected for this group.")
-
-    # Save group
+    # Save group button
     if st.button("💾 Save group"):
         if not st.session_state.new_group_name.strip():
             st.error("Please enter a group/output column name.")
         elif coverage_count == 0:
             st.error("Select at least one column to map for this group.")
         else:
-            # Build group: output_name, headers (list of selected headers)
             selected_headers = [v for v in st.session_state.new_group_selections.values() if v]
             st.session_state.header_groups.append({
                 "output_name": st.session_state.new_group_name.strip(),
                 "headers": list(set(selected_headers))
             })
-            # Reset for next group
             st.session_state.new_group_name = ""
             st.session_state.new_group_pattern = ""
             st.session_state.new_group_selections = {}
