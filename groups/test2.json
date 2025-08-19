@@ -1,0 +1,34 @@
+{
+  "name": "test2",
+  "created_utc": "2025-08-19T16:30:07.004073Z",
+  "header_groups": [
+    {
+      "output_name": "age",
+      "mapping": {
+        "C:\\Users\\Ludocris\\Documents\\AppDev\\Excel-Merger\\input\\dummy_3.xlsx": "Age",
+        "C:\\Users\\Ludocris\\Documents\\AppDev\\Excel-Merger\\input\\dummy_4.xlsx": "Age",
+        "C:\\Users\\Ludocris\\Documents\\AppDev\\Excel-Merger\\input\\dummy_1.xlsx": "Age"
+      }
+    },
+    {
+      "output_name": "test2",
+      "mapping": {
+        "C:\\Users\\Ludocris\\Documents\\AppDev\\Excel-Merger\\input\\dummy_3.xlsx": "Email",
+        "C:\\Users\\Ludocris\\Documents\\AppDev\\Excel-Merger\\input\\dummy_5.xlsx": "Email",
+        "C:\\Users\\Ludocris\\Documents\\AppDev\\Excel-Merger\\input\\dummy_1.xlsx": "Email"
+      }
+    },
+    {
+      "output_name": "joindate",
+      "mapping": {
+        "C:\\Users\\Ludocris\\Documents\\AppDev\\Excel-Merger\\input\\dummy_3.xlsx": "Joined",
+        "C:\\Users\\Ludocris\\Documents\\AppDev\\Excel-Merger\\input\\dummy_2.xlsx": "Join Date",
+        "C:\\Users\\Ludocris\\Documents\\AppDev\\Excel-Merger\\input\\dummy_4.xlsx": "JoinDate",
+        "C:\\Users\\Ludocris\\Documents\\AppDev\\Excel-Merger\\input\\dummy_1.xlsx": "JoinDate",
+        "C:\\Users\\Ludocris\\Documents\\AppDev\\Excel-Merger\\input\\dummy_5.xlsx": "Join Date"
+      }
+    }
+  ],
+  "notes": "",
+  "version": 7
+}
